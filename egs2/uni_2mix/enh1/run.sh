@@ -8,6 +8,8 @@ set -o pipefail
 min_or_max=min # "min" or "max". This is to determine how the mixtures are generated in local/data.sh.
 sample_rate=8k
 
+uni_corpus="wsj0_2mix librimix"
+# uni_corpus="wsj0_2mix_mini fake_2mix_mini"
 
 train_set="tr_${min_or_max}_${sample_rate}"
 valid_set="cv_${min_or_max}_${sample_rate}"
@@ -20,6 +22,7 @@ test_sets="tt_${min_or_max}_${sample_rate} "
     --fs "${sample_rate}" \
     --lang en \
     --ngpu 4 \
+    --uni_corpus "${uni_corpus}" \
     --local_data_opts "--sample_rate ${sample_rate} --min_or_max ${min_or_max}" \
     --enh_config conf/tuning/train_enh_dprnn_tasnet.yaml \
     "$@"

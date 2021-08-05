@@ -37,6 +37,7 @@ inference_nj=32     # The number of parallel jobs in inference.
 gpu_inference=false # Whether to perform gpu inference.
 expdir=exp       # Directory to save experiments.
 python=python3       # Specify python to execute espnet commands
+uni_corpus=
 
 # Data preparation related
 local_data_opts= # The options given to local/data.sh.
@@ -63,7 +64,7 @@ dereverb_ref_num=1
 
 # Training data related
 use_dereverb_ref=false
-use_noise_ref=false
+use_noise_ref=true
 
 # Pretrained model related
 # The number of --init_param must be same.
@@ -211,9 +212,12 @@ fi
 
 if ! "${skip_data_prep}"; then
     if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
-        log "Stage 1: Data preparation for data/${train_set}, data/${valid_set}, etc."
-        # [Task dependent] Need to create data.sh for new corpus
-        local/data.sh ${local_data_opts}
+        for corpus_name in ${uni_corpus}; do
+            log "Stage 1: Data preparation for data_$corpus_name}/${train_set}, data_$corpus_name}/${valid_set}, etc."
+            # [Task dependent] Need to create data.sh for new corpus
+            (cd ../../${corpus_name}; local/data.sh ${local_data_opts})
+            ln -s ../../$corpus_name}/enh1/data data_$corpus_name}
+        done
     fi
 
     if [ ${stage} -le 2 ] && [ ${stop_stage} -ge 2 ]; then
@@ -255,50 +259,75 @@ if ! "${skip_data_prep}"; then
         # and also it can also change the audio-format and sampling rate.
         # If nothing is need, then format_wav_scp.sh does nothing:
         # i.e. the input file format and rate is same as the output.
+        for corpus_name in ${uni_corpus}; do
+            log "Format wav.scp: data_${corpus_name}/ -> ${data_feats}"
 
+            for dset in "${train_set}" "${valid_set}" ${test_sets}; do
+                if [ "${dset}" = "${train_set}" ] || [ "${dset}" = "${valid_set}" ]; then
+                    _suf="/org"
+                else
+                    _suf=""
+                fi
+                local/copy_data_dir.sh --utt-prefix ${corpus_name}- --spk-prefix ${corpus_name}- --train-or-valid ${_suf}- \
+                 data_${corpus_name}/"${dset}" "${data_feats}${_suf}/${dset}_${corpus_name}"
+                rm -f ${data_feats}${_suf}/${dset}_${corpus_name}/{segments,wav.scp,reco2file_and_channel}
+                _opts=
+                if [ -e data/"${dset}_${corpus_name}"/segments ]; then
+                    # "segments" is used for splitting wav files which are written in "wav".scp
+                    # into utterances. The file format of segments:
+                    #   <segment_id> <record_id> <start_time> <end_time>
+                    #   "e.g. call-861225-A-0050-0065 call-861225-A 5.0 6.5"
+                    # Where the time is written in seconds.
+                    _opts+="--segments data/${dset}_${corpus_name}/segments "
+                fi
+
+
+                _spk_list=" "
+                if $use_noise_ref && [ -n "${_suf}" ]; then
+                    # references for denoising ("noise1 noise2 ... niose${noise_type_num} ")
+                    _spk_list+=$(for n in $(seq $noise_type_num); do echo -n "noise$n "; done)
+                fi
+                if $use_dereverb_ref && [ -n "${_suf}" ]; then
+                    # references for dereverberation
+                    _spk_list+=$(for n in $(seq $dereverb_ref_num); do echo -n "dereverb$n "; done)
+                fi
+                # last one should be spk*.scp to count the utt2num_samples correctly
+                for i in $(seq ${spk_num}); do
+                    _spk_list+="spk${i} "
+                done
+
+
+                for spk in ${_spk_list} ; do
+                    # shellcheck disable=SC2086
+                    scripts/audio/format_wav_scp.sh --nj "${nj}" --cmd "${train_cmd}" \
+                        --out-filename "${spk}.scp" \
+                        --audio-format "${audio_format}" --fs "${fs}" ${_opts} \
+                        "${data_feats}${_suf}/${dset}_${corpus_name}/${spk}_tmp.scp" "${data_feats}${_suf}/${dset}_${corpus_name}" \
+                        "${data_feats}${_suf}/${dset}_${corpus_name}/logs/${spk}" "${data_feats}${_suf}/${dset}_${corpus_name}/data/${spk}"
+                        # "data_${corpus_name}/${dset}/${spk}.scp" "${data_feats}${_suf}/${dset}_${corpus_name}" \
+
+                    rm "${data_feats}${_suf}/${dset}_${corpus_name}/${spk}_tmp.scp"
+
+                done
+            done
+        done
+        1/0
+        log "Merge all the .scp from different corpus..."
         for dset in "${train_set}" "${valid_set}" ${test_sets}; do
             if [ "${dset}" = "${train_set}" ] || [ "${dset}" = "${valid_set}" ]; then
                 _suf="/org"
             else
                 _suf=""
             fi
-            utils/copy_data_dir.sh data/"${dset}" "${data_feats}${_suf}/${dset}"
-            rm -f ${data_feats}${_suf}/${dset}/{segments,wav.scp,reco2file_and_channel}
-            _opts=
-            if [ -e data/"${dset}"/segments ]; then
-                # "segments" is used for splitting wav files which are written in "wav".scp
-                # into utterances. The file format of segments:
-                #   <segment_id> <record_id> <start_time> <end_time>
-                #   "e.g. call-861225-A-0050-0065 call-861225-A 5.0 6.5"
-                # Where the time is written in seconds.
-                _opts+="--segments data/${dset}/segments "
-            fi
+            mkdir -p "${data_feats}${_suf}/${dset}"
 
-
-            _spk_list=" "
-            for i in $(seq ${spk_num}); do
-                _spk_list+="spk${i} "
-            done
-            if $use_noise_ref && [ -n "${_suf}" ]; then
-                # references for denoising ("noise1 noise2 ... niose${noise_type_num} ")
-                _spk_list+=$(for n in $(seq $noise_type_num); do echo -n "noise$n "; done)
-            fi
-            if $use_dereverb_ref && [ -n "${_suf}" ]; then
-                # references for dereverberation
-                _spk_list+=$(for n in $(seq $dereverb_ref_num); do echo -n "dereverb$n "; done)
-            fi
-
-            for spk in ${_spk_list} "wav" ; do
-                # shellcheck disable=SC2086
-                scripts/audio/format_wav_scp.sh --nj "${nj}" --cmd "${train_cmd}" \
-                    --out-filename "${spk}.scp" \
-                    --audio-format "${audio_format}" --fs "${fs}" ${_opts} \
-                    "data/${dset}/${spk}.scp" "${data_feats}${_suf}/${dset}" \
-                    "${data_feats}${_suf}/${dset}/logs/${spk}" "${data_feats}${_suf}/${dset}/data/${spk}"
-
+            for aim_file in spk1.scp spk2.scp utt2num_samples noise1.scp spk2utt utt2spk; do
+                for corpus_name in ${uni_corpus}; do
+                    cat "${data_feats}${_suf}/${dset}_${corpus_name}/${aim_file}" 
+                done | sort > "${data_feats}${_suf}/${dset}/${aim_file}"
             done
             echo "${feats_type}" > "${data_feats}${_suf}/${dset}/feats_type"
-
+            # utils/validate_data_dir.sh "--no-feats --no-text --no-wav" "${data_feats}${_suf}/${dset}"
         done
     fi
 
@@ -327,7 +356,7 @@ if ! "${skip_data_prep}"; then
             fi
 
             # Copy data dir
-            utils/copy_data_dir.sh "${data_feats}/org/${dset}" "${data_feats}/${dset}"
+            utils/copy_data_dir.sh --validate-opts "--no-wav" "${data_feats}/org/${dset}" "${data_feats}/${dset}"
             cp "${data_feats}/org/${dset}/feats_type" "${data_feats}/${dset}/feats_type"
             for spk in ${_spk_list};do
                 cp "${data_feats}/org/${dset}/${spk}.scp" "${data_feats}/${dset}/${spk}.scp"
@@ -342,7 +371,7 @@ if ! "${skip_data_prep}"; then
                 awk -v min_length="${_min_length}" -v max_length="${_max_length}" \
                     '{ if ($2 > min_length && $2 < max_length ) print $0; }' \
                     >"${data_feats}/${dset}/utt2num_samples"
-            for spk in ${_spk_list} "wav"; do
+            for spk in ${_spk_list} ; do
                 <"${data_feats}/org/${dset}/${spk}.scp" \
                     utils/filter_scp.pl "${data_feats}/${dset}/utt2num_samples"  \
                     >"${data_feats}/${dset}/${spk}.scp"
