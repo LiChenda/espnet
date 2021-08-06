@@ -32,9 +32,11 @@ from espnet2.tasks.abs_task import AbsTask
 from espnet2.torch_utils.initialize import initialize
 from espnet2.train.class_choices import ClassChoices
 from espnet2.train.collate_fn import CommonCollateFn
+from espnet2.train.preprocessor import DynamicPreprocessor
 from espnet2.train.trainer import Trainer
 from espnet2.utils.get_default_kwargs import get_default_kwargs
 from espnet2.utils.nested_dict_action import NestedDictAction
+from espnet2.utils.types import float_or_none
 from espnet2.utils.types import str2bool
 from espnet2.utils.types import str_or_none
 
@@ -120,8 +122,52 @@ class EnhancementTask(AbsTask):
         group.add_argument(
             "--use_preprocessor",
             type=str2bool,
-            default=False,
+            default=True,
             help="Apply preprocessing to data or not",
+        )
+
+        parser.add_argument(
+            "--sampling_rate",
+            type=int,
+            default=8000,
+            help="Sampling rate for the speech, rir and noise.",
+        )
+
+        parser.add_argument(
+            "--speech_volume_normalize",
+            type=float_or_none,
+            default=None,
+            help="Scale the maximum amplitude to the given value.",
+        )
+        parser.add_argument(
+            "--rir_scp",
+            type=str_or_none,
+            default=None,
+            help="The file path of rir scp file.",
+        )
+        parser.add_argument(
+            "--rir_apply_prob",
+            type=float,
+            default=1.0,
+            help="THe probability for applying RIR convolution.",
+        )
+        parser.add_argument(
+            "--noise_scp",
+            type=str_or_none,
+            default=None,
+            help="The file path of noise scp file.",
+        )
+        parser.add_argument(
+            "--noise_apply_prob",
+            type=float,
+            default=1.0,
+            help="The probability applying Noise adding.",
+        )
+        parser.add_argument(
+            "--noise_db_range",
+            type=str,
+            default="13_15",
+            help="The range of noise decibel level.",
         )
 
         for class_choices in cls.class_choices_list:
@@ -145,7 +191,28 @@ class EnhancementTask(AbsTask):
         cls, args: argparse.Namespace, train: bool
     ) -> Optional[Callable[[str, Dict[str, np.array]], Dict[str, np.ndarray]]]:
         assert check_argument_types()
-        retval = None
+        if args.use_preprocessor:
+            retval =DynamicPreprocessor(
+                train=train,
+                sampling_rate=args.sampling_rate,
+                speech_name=["speech_ref1", "speech_ref2"],
+                rir_scp=args.rir_scp if hasattr(args, "rir_scp") else None,
+                rir_apply_prob=args.rir_apply_prob
+                if hasattr(args, "rir_apply_prob")
+                else 1.0,
+                noise_scp=args.noise_scp if hasattr(args, "noise_scp") else None,
+                noise_apply_prob=args.noise_apply_prob
+                if hasattr(args, "noise_apply_prob")
+                else 1.0,
+                noise_db_range=args.noise_db_range
+                if hasattr(args, "noise_db_range")
+                else "13_15",
+                speech_volume_normalize=args.speech_volume_normalize
+                if hasattr(args, "rir_scp")
+                else None,
+            )
+        else:
+            retval = None
         assert check_return_type(retval)
         return retval
 
@@ -153,21 +220,46 @@ class EnhancementTask(AbsTask):
     def required_data_names(
         cls, train: bool = True, inference: bool = False
     ) -> Tuple[str, ...]:
-        if not inference:
-            retval = ("speech_mix", "speech_ref1")
-        else:
+        if train and not inference: # only the mode: train
+            retval = ("speech_ref1",)
+        elif not train and not inference: # only the valid/plot_att mode (also for collect_status in train model):
+            retval = ("speech_ref1",)
+        elif not train and inference: # only the test mode:
             # Recognition mode
             retval = ("speech_mix",)
+        else: 
+            raise ValueError("Unsupported mode")
         return retval
 
     @classmethod
     def optional_data_names(
         cls, train: bool = True, inference: bool = False
     ) -> Tuple[str, ...]:
+        if train and not inference: # only the mode: train
+            retval = ["dereverb_ref{}".format(n) for n in range(1, MAX_REFERENCE_NUM + 1)]
+            retval += ["speech_ref{}".format(n) for n in range(2, MAX_REFERENCE_NUM + 1)]
+            retval += ["noise_ref{}".format(n) for n in range(1, MAX_REFERENCE_NUM + 1)]
+            retval = tuple(retval)
+        elif not train and not inference: # only the valid/plot_att mode:
+            retval = ["speech_mix"]
+            retval += ["dereverb_ref{}".format(n) for n in range(1, MAX_REFERENCE_NUM + 1)]
+            retval += ["speech_ref{}".format(n) for n in range(2, MAX_REFERENCE_NUM + 1)]
+            retval += ["noise_ref{}".format(n) for n in range(1, MAX_REFERENCE_NUM + 1)]
+            retval = tuple(retval)
+        elif not train and inference: # only the test mode:
+            # Recognition mode
+            retval = ["dereverb_ref{}".format(n) for n in range(1, MAX_REFERENCE_NUM + 1)]
+            retval += ["speech_ref{}".format(n) for n in range(2, MAX_REFERENCE_NUM + 1)]
+            retval += ["noise_ref{}".format(n) for n in range(1, MAX_REFERENCE_NUM + 1)]
+            retval = tuple(retval)
+        else: 
+            raise ValueError("Unsupported mode")
+        '''
         retval = ["dereverb_ref{}".format(n) for n in range(1, MAX_REFERENCE_NUM + 1)]
         retval += ["speech_ref{}".format(n) for n in range(2, MAX_REFERENCE_NUM + 1)]
         retval += ["noise_ref{}".format(n) for n in range(1, MAX_REFERENCE_NUM + 1)]
         retval = tuple(retval)
+        '''
         assert check_return_type(retval)
         return retval
 

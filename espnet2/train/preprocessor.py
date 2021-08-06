@@ -6,6 +6,7 @@ from typing import Dict
 from typing import Iterable
 from typing import Union
 
+import librosa
 import numpy as np
 import scipy.signal
 import soundfile
@@ -224,7 +225,7 @@ class CommonPreprocessor(AbsPreprocessor):
                     speech = speech[None, :]
                 else:
                     speech = speech.T
-                # Calc power on non shlence region
+                # Calc power on non silence region
                 power = (speech[detect_non_silence(speech)] ** 2).mean()
 
                 # 1. Convolve RIR
@@ -395,5 +396,268 @@ class CommonPreprocessor_multi(AbsPreprocessor):
                 tokens = self.tokenizer.text2tokens(text)
                 text_ints = self.token_id_converter.tokens2ids(tokens)
                 data[text_n] = np.array(text_ints, dtype=np.int64)
+        assert check_return_type(data)
+        return data
+
+class DynamicPreprocessor(AbsPreprocessor):
+    """Used for dynamic data preprocessing.  """
+    def __init__(
+        self,
+        train: bool,
+        sampling_rate: int = 8000,
+        token_type: str = None,
+        token_list: Union[Path, str, Iterable[str]] = None,
+        bpemodel: Union[Path, str, Iterable[str]] = None,
+        text_cleaner: Collection[str] = None,
+        g2p_type: str = None,
+        unk_symbol: str = "<unk>",
+        space_symbol: str = "<space>",
+        non_linguistic_symbols: Union[Path, str, Iterable[str]] = None,
+        delimiter: str = None,
+        rir_scp: str = None,
+        rir_apply_prob: float = 1.0,
+        noise_scp: str = None,
+        noise_apply_prob: float = 1.0,
+        noise_db_range: str = "3_10",
+        speech_volume_normalize: float = None,
+        speech_name: str = "speech",
+        text_name: str = "text",
+    ):
+        super().__init__(train)
+        self.train = train
+        self.sampling_rate= sampling_rate
+        self.speech_name = speech_name
+        self.text_name = text_name
+        self.speech_volume_normalize = speech_volume_normalize
+        self.rir_apply_prob = rir_apply_prob
+        self.noise_apply_prob = noise_apply_prob
+
+        if token_type is not None:
+            if token_list is None:
+                raise ValueError("token_list is required if token_type is not None")
+            self.text_cleaner = TextCleaner(text_cleaner)
+
+            self.tokenizer = build_tokenizer(
+                token_type=token_type,
+                bpemodel=bpemodel,
+                delimiter=delimiter,
+                space_symbol=space_symbol,
+                non_linguistic_symbols=non_linguistic_symbols,
+                g2p_type=g2p_type,
+            )
+            self.token_id_converter = TokenIDConverter(
+                token_list=token_list,
+                unk_symbol=unk_symbol,
+            )
+        else:
+            self.text_cleaner = None
+            self.tokenizer = None
+            self.token_id_converter = None
+
+        if train and rir_scp is not None:
+            self.rirs = []
+            with open(rir_scp, "r", encoding="utf-8") as f:
+                for line in f:
+                    sps = line.strip().split(None, 1)
+                    if len(sps) == 1:
+                        self.rirs.append(sps[0])
+                    else:
+                        self.rirs.append(sps[1])
+        else:
+            self.rirs = None
+
+        if train and noise_scp is not None:
+            self.noises = []
+            with open(noise_scp, "r", encoding="utf-8") as f:
+                for line in f:
+                    sps = line.strip().split(None, 1)
+                    if len(sps) == 1:
+                        self.noises.append(sps[0])
+                    else:
+                        self.noises.append(sps[1])
+            sps = noise_db_range.split("_")
+            if len(sps) == 1:
+                self.noise_db_low, self.noise_db_high = float(sps[0])
+            elif len(sps) == 2:
+                self.noise_db_low, self.noise_db_high = float(sps[0]), float(sps[1])
+            else:
+                raise ValueError(
+                    "Format error: '{noise_db_range}' e.g. -3_4 -> [-3db,4db]"
+                )
+        else:
+            self.noises = None
+
+    def __call__(
+        self, uid: str, data: Dict[str, Union[str, np.ndarray]]
+    ) -> Dict[str, np.ndarray]:
+        assert check_argument_types()
+
+        print('debug:', data)
+        print('debug:', self.__dict__.keys())
+
+        if self.train:   
+            # Generate RIR in trainig for each speaker
+            speech_mixture_list=[]
+            final_scale_items = []
+            weight_list= [10**(-5/20.0), 10**(5/20.0)]
+            # for each given speech_refX 
+            for speech_name in self.speech_name:
+                assert speech_name in data, (speech_name, data.keys())
+                speech = data[speech_name]
+                nsamples = len(speech) # the nsamples should be the same for all
+
+                # speech: (Nmic, Time)
+                if speech.ndim == 1:
+                    speech = speech[None, :]
+                else:
+                    speech = speech.T
+                # Calc power on non silence region
+                power = (speech[detect_non_silence(speech)] ** 2).mean()
+
+                # 1. Convolve RIR
+                if self.rirs is not None and self.rir_apply_prob >= np.random.random():
+                    rir_path = np.random.choice(self.rirs)
+                    if rir_path is not None:
+                        rir, sf = soundfile.read(
+                            rir_path, dtype=np.float64, always_2d=True
+                        )
+                        if sf != self.sampling_rate:
+                            rir = librosa.resample(rir, sf, self.sampling_rate)
+
+                        # rir: (Nmic, Time)
+                        if rir.ndim == 1:
+                            rir = rir[None, :]
+                        else:
+                            # Only support the single channel case now
+                            # rir = rir[0][None, :]
+                            rir = rir.T
+
+                        # speech: (Nmic, Time)
+                        # Note that this operation doesn't change the signal length
+                        # soundfile.write(f"{uid}-{speech_name}_raw.wav", speech[0], 8000)
+                        speech = scipy.signal.convolve(speech, rir, mode="full")[
+                            :, : speech.shape[1]
+                        ]
+                        # soundfile.write(f"{uid}-{speech_name}_rir.wav", speech.T, 8000)
+                        # Reverse mean power to the original power
+                        power2 = (speech[detect_non_silence(speech)] ** 2).mean()
+                        speech = np.sqrt(power / max(power2, 1e-10)) * speech
+
+                speech_mixture_list.append(speech)
+
+            assert len(speech_mixture_list) == len(weight_list), (len(speech_mixture_list), len(weight_list))
+
+            speech_mixture = np.zeros((speech.shape)) #(1,nsamples)
+            for speech_name, speech_spk, weight in zip(self.speech_name, speech_mixture_list, weight_list):
+                speech_mixture += weight * speech_spk
+                data[speech_name] = weight * speech_spk
+                final_scale_items.append(speech_name)
+            
+            power_mix = (speech_mixture[detect_non_silence(speech_mixture)] ** 2).mean()
+            """
+            soundfile.write(f"{uid}-speech_ref1_end.wav", speech_mixture_list[0].T, 8000)
+            soundfile.write(f"{uid}-speech_ref2_end.wav", speech_mixture_list[1].T, 8000)
+            soundfile.write(f"{uid}-speech_ref1_end_scale.wav", data["speech_ref1"].T, 8000)
+            soundfile.write(f"{uid}-speech_ref2_end_scale.wav", data["speech_ref2"].T, 8000)
+            soundfile.write(f"{uid}-speech_mixture.wav", speech_mixture.T, 8000)
+            """
+
+            # 2. Add Noise
+            if (
+                any (data["noise_ref1"] != 0)  or
+                (self.noises is not None and self.noise_apply_prob >= np.random.random())
+            ):
+                if any (data["noise_ref1"] != 0): # noise given by the corpus
+                    noise = data["noise_ref1"]
+                    # noise: (Time, Nmic)
+                    if rir.ndim != 1:
+                        # Only support the single channel case now
+                        noise = noise[:, 0] #(Time, Nmic) -> (Time, )
+
+                    noise_frames = len(noise)
+                    if noise_frames == nsamples:
+                        pass
+                    elif noise_frames < nsamples:
+                        offset = np.random.randint(0, nsamples - noise.frames)
+                        # noise: (Time,)
+                        # Repeat noise
+                        noise = np.pad(
+                            noise,
+                            [(offset, nsamples - noise.frames - offset), (0, 0)],
+                            mode="wrap",
+                        )
+                    else:
+                        offset = np.random.randint(0, noise.frames - nsamples)
+                        # noise: (Time, Nmic)
+                        noise = noise[offset:offset + nsamples]
+                    if len(noise) != nsamples:
+                        raise RuntimeError(f"Something wrong: {uid}, noise_len:{len(noise)}, nsamples:{nsamples}")
+                else:
+                    noise_path = np.random.choice(self.noises)
+                    noise_db = np.random.uniform(
+                        self.noise_db_low, self.noise_db_high
+                    )
+                    with soundfile.SoundFile(noise_path) as f:
+                        if f.frames == nsamples:
+                            noise = f.read(dtype=np.float64, always_2d=True)
+                        elif f.frames < nsamples:
+                            offset = np.random.randint(0, nsamples - f.frames)
+                            # noise: (Time, Nmic)
+                            noise = f.read(dtype=np.float64, always_2d=True)
+                            # Repeat noise
+                            noise = np.pad(
+                                noise,
+                                [(offset, nsamples - f.frames - offset), (0, 0)],
+                                mode="wrap",
+                            )
+                        else:
+                            offset = np.random.randint(0, f.frames - nsamples)
+                            f.seek(offset)
+                            # noise: (Time, Nmic)
+                            noise = f.read(
+                                nsamples, dtype=np.float64, always_2d=True
+                            )
+                            if len(noise) != nsamples:
+                                raise RuntimeError(f"Something wrong: {noise_path}")
+
+                # noise: (Nmic, Time)
+                noise = noise.T
+
+                noise_power = (noise ** 2).mean()
+                scale = (
+                    10 ** (-noise_db / 20)
+                    * np.sqrt(power_mix)
+                    / np.sqrt(max(noise_power, 1e-10))
+                )
+                speech_mixture = speech_mixture + scale * noise
+                data["noise_ref1"] = (scale * noise)
+                final_scale_items.append("noise_ref1")
+
+            speech_mixture = speech_mixture.T
+            ma = np.max(np.abs(speech_mixture))
+            if ma > 1.0:
+                speech_mixture /= ma
+                for item in final_scale_items:
+                    data[item] /= ma
+            data["speech_mix"] = speech_mixture
+            # data["speech_mix_lengths"] = data["speech_ref1_lengths"]
+
+            if self.speech_volume_normalize is not None:
+                ma = np.max(np.abs(speech_mixture))
+                data["speech_mix"] = speech_mixture * self.speech_volume_normalize / ma
+                for item in final_scale_items:
+                    data[item] *= self.speech_volume_normalize / ma
+
+
+            for item in final_scale_items:
+                data[item] = data[item].T 
+            # assert 1==0, ([(item,data[item].shape) for item in final_scale_items])
+
+        if self.text_name in data and self.tokenizer is not None:
+            text = data[self.text_name]
+            text = self.text_cleaner(text)
+            tokens = self.tokenizer.text2tokens(text)
+            text_ints = self.token_id_converter.tokens2ids(tokens)
+            data[self.text_name] = np.array(text_ints, dtype=np.int64)
         assert check_return_type(data)
         return data

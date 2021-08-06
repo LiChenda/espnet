@@ -403,7 +403,7 @@ if ! "${skip_train}"; then
             _opts+="--config ${enh_config} "
         fi
 
-        _scp=wav.scp
+        _scp=spk1.scp
         if [[ "${audio_format}" == *ark* ]]; then
             _type=kaldi_ark
         else
@@ -442,7 +442,7 @@ if ! "${skip_train}"; then
         log "Enhancement collect-stats started... log: '${_logdir}/stats.*.log'"
 
         # prepare train and valid data parameters
-        _train_data_param="--train_data_path_and_name_and_type ${_enh_train_dir}/wav.scp,speech_mix,sound "
+        # _train_data_param="--train_data_path_and_name_and_type ${_enh_train_dir}/wav.scp,speech_mix,sound "
         _valid_data_param="--valid_data_path_and_name_and_type ${_enh_valid_dir}/wav.scp,speech_mix,sound "
         for spk in $(seq "${spk_num}"); do
             _train_data_param+="--train_data_path_and_name_and_type ${_enh_train_dir}/spk${spk}.scp,speech_ref${spk},sound "
@@ -510,8 +510,10 @@ if ! "${skip_train}"; then
         _fold_length="$((enh_speech_fold_length * 100))"
 
         # prepare train and valid data parameters
-        _train_data_param="--train_data_path_and_name_and_type ${_enh_train_dir}/wav.scp,speech_mix,sound "
-        _train_shape_param="--train_shape_file ${enh_stats_dir}/train/speech_mix_shape "
+        _train_data_param=""
+        _train_shape_param=""
+        # _train_data_param="--train_data_path_and_name_and_type ${_enh_train_dir}/wav.scp,speech_mix,sound "
+        # _train_shape_param="--train_shape_file ${enh_stats_dir}/train/speech_mix_shape "
         _valid_data_param="--valid_data_path_and_name_and_type ${_enh_valid_dir}/wav.scp,speech_mix,sound "
         _valid_shape_param="--valid_shape_file ${enh_stats_dir}/valid/speech_mix_shape "
         _fold_length_param="--fold_length ${_fold_length} "

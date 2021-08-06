@@ -863,11 +863,30 @@ class ESPnetEnhancementModel(AbsESPnetModel):
             )
         return torch.gather(hs_pad, 1, perm).unbind(dim=1)
 
-    def collect_feats(
+    def collect_feats_with_wav(
         self, speech_mix: torch.Tensor, speech_mix_lengths: torch.Tensor, **kwargs
     ) -> Dict[str, torch.Tensor]:
         # for data-parallel
         speech_mix = speech_mix[:, : speech_mix_lengths.max()]
 
         feats, feats_lengths = speech_mix, speech_mix_lengths
+        return {"feats": feats, "feats_lengths": feats_lengths}
+
+    def collect_feats(
+        self,  **kwargs
+    ) -> Dict[str, torch.Tensor]:
+        # for data-parallel
+        if kwargs.get("speech_mix") is not None:
+            speech_mix = kwargs.get("speech_mix") 
+            speech_mix_lengths = kwargs.get("speech_mix_lengths") 
+            speech_mix = speech_mix[:, : speech_mix_lengths.max()]
+            feats, feats_lengths = speech_mix, speech_mix_lengths
+        elif kwargs.get("speech_ref1") is not None:
+            speech_ref1 = kwargs.get("speech_ref1")
+            speech_ref1_lengths = kwargs.get("speech_ref1_lengths")
+            speech_ref1 = speech_ref1[:, : speech_ref1_lengths.max()]
+            feats, feats_lengths = speech_ref1, speech_ref1_lengths
+        else:
+            raise ValueError("speech_mix or speech_ref1 is required")
+
         return {"feats": feats, "feats_lengths": feats_lengths}
