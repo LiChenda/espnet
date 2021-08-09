@@ -7,6 +7,7 @@ from typing import Iterable
 from typing import Union
 
 import librosa
+import logging
 import numpy as np
 import scipy.signal
 import soundfile
@@ -110,7 +111,7 @@ def detect_non_silence(
     if np.all(mean_power == 0):
         return np.full(x.shape, fill_value=True, dtype=np.bool)
     # detect_frames: (C, T)
-    detect_frames = power / mean_power > threshold
+    detect_frames = power / mean_power[...,None] > threshold
     # detects: (C, T, F)
     detects = np.broadcast_to(
         detect_frames[..., None], detect_frames.shape + (frame_shift,)
@@ -420,6 +421,7 @@ class DynamicPreprocessor(AbsPreprocessor):
         noise_apply_prob: float = 1.0,
         noise_db_range: str = "3_10",
         speech_volume_normalize: float = None,
+        ref_channel: str = None,
         speech_name: str = "speech",
         text_name: str = "text",
     ):
@@ -431,6 +433,7 @@ class DynamicPreprocessor(AbsPreprocessor):
         self.speech_volume_normalize = speech_volume_normalize
         self.rir_apply_prob = rir_apply_prob
         self.noise_apply_prob = noise_apply_prob
+        self.ref_channel = ref_channel
 
         if token_type is not None:
             if token_list is None:
@@ -492,13 +495,11 @@ class DynamicPreprocessor(AbsPreprocessor):
     ) -> Dict[str, np.ndarray]:
         assert check_argument_types()
 
-        print('debug:', data)
-        print('debug:', self.__dict__.keys())
-
         if self.train:   
             # Generate RIR in trainig for each speaker
             speech_mixture_list=[]
             final_scale_items = []
+            # TODO(Jing): extract the weight from the orginal corpus
             weight_list= [10**(-5/20.0), 10**(5/20.0)]
             # for each given speech_refX 
             for speech_name in self.speech_name:
@@ -511,6 +512,8 @@ class DynamicPreprocessor(AbsPreprocessor):
                     speech = speech[None, :]
                 else:
                     speech = speech.T
+                    logging.warning("Not fully tested for the multi-channel speech input.")
+
                 # Calc power on non silence region
                 power = (speech[detect_non_silence(speech)] ** 2).mean()
 
@@ -538,6 +541,11 @@ class DynamicPreprocessor(AbsPreprocessor):
                         speech = scipy.signal.convolve(speech, rir, mode="full")[
                             :, : speech.shape[1]
                         ]
+
+                        # Only use the single channel speech 
+                        # speech : (Nmic, Time) --> (1,Time)
+                        if speech.shape[0] > 1:
+                            speech = speech[self.ref_channel][None,...] if self.ref_channel != None else speech[0][None,...]
                         # soundfile.write(f"{uid}-{speech_name}_rir.wav", speech.T, 8000)
                         # Reverse mean power to the original power
                         power2 = (speech[detect_non_silence(speech)] ** 2).mean()
@@ -570,7 +578,7 @@ class DynamicPreprocessor(AbsPreprocessor):
                 if any (data["noise_ref1"] != 0): # noise given by the corpus
                     noise = data["noise_ref1"]
                     # noise: (Time, Nmic)
-                    if rir.ndim != 1:
+                    if noise.ndim != 1:
                         # Only support the single channel case now
                         noise = noise[:, 0] #(Time, Nmic) -> (Time, )
 
@@ -622,6 +630,8 @@ class DynamicPreprocessor(AbsPreprocessor):
 
                 # noise: (Nmic, Time)
                 noise = noise.T
+                if noise.shape[0] > 1:
+                    noise = noise[self.ref_channel][None,...] if self.ref_channel != None else noise[0][None,...]
 
                 noise_power = (noise ** 2).mean()
                 scale = (
@@ -633,7 +643,7 @@ class DynamicPreprocessor(AbsPreprocessor):
                 data["noise_ref1"] = (scale * noise)
                 final_scale_items.append("noise_ref1")
 
-            speech_mixture = speech_mixture.T
+            speech_mixture = speech_mixture.T.squeeze() # (Time, 1) --> (Time,)
             ma = np.max(np.abs(speech_mixture))
             if ma > 1.0:
                 speech_mixture /= ma
@@ -650,8 +660,9 @@ class DynamicPreprocessor(AbsPreprocessor):
 
 
             for item in final_scale_items:
-                data[item] = data[item].T 
-            # assert 1==0, ([(item,data[item].shape) for item in final_scale_items])
+                # (Nmic, Time) --> (Time, Nmic)
+                # logging.info(f"{uid} {item} scale:{data[item].shape}")
+                data[item] = data[item].T.squeeze() # (Time, 1) --> (Time,)
 
         if self.text_name in data and self.tokenizer is not None:
             text = data[self.text_name]

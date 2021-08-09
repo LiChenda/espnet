@@ -461,8 +461,8 @@ if ! "${skip_train}"; then
             # references for denoising
             _train_data_param+=$(for n in $(seq $noise_type_num); do echo -n \
                 "--train_data_path_and_name_and_type ${_enh_train_dir}/noise${n}.scp,noise_ref${n},sound "; done)
-            _valid_data_param+=$(for n in $(seq $noise_type_num); do echo -n \
-                "--valid_data_path_and_name_and_type ${_enh_valid_dir}/noise${n}.scp,noise_ref${n},sound "; done)
+            # _valid_data_param+=$(for n in $(seq $noise_type_num); do echo -n \
+                # "--valid_data_path_and_name_and_type ${_enh_valid_dir}/noise${n}.scp,noise_ref${n},sound "; done)
         fi
 
         # NOTE: --*_shape_file doesn't require length information if --batch_type=unsorted,
@@ -541,8 +541,8 @@ if ! "${skip_train}"; then
             for n in $(seq "${noise_type_num}"); do
                 _train_data_param+="--train_data_path_and_name_and_type ${_enh_train_dir}/noise${n}.scp,noise_ref${n},sound "
                 _train_shape_param+="--train_shape_file ${enh_stats_dir}/train/noise_ref${n}_shape "
-                _valid_data_param+="--valid_data_path_and_name_and_type ${_enh_valid_dir}/noise${n}.scp,noise_ref${n},sound "
-                _valid_shape_param+="--valid_shape_file ${enh_stats_dir}/valid/noise_ref${n}_shape "
+                # _valid_data_param+="--valid_data_path_and_name_and_type ${_enh_valid_dir}/noise${n}.scp,noise_ref${n},sound "
+                # _valid_shape_param+="--valid_shape_file ${enh_stats_dir}/valid/noise_ref${n}_shape "
                 _fold_length_param+="--fold_length ${_fold_length} "
             done
         fi
