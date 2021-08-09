@@ -22,6 +22,8 @@ EOF
 . ./db.sh
 
 # Path to the directory containing WHAM! noise
+# Must be a directory named "wham_noise" containing the following dirs:
+# tr, cv, tt and metadata
 # (will download from the official site if not specified)
 wham_noise=
 
@@ -62,7 +64,7 @@ if [ -z "${wham_noise}" ]; then
 else
   # The simulation program will write data to wham_noie,
   # so copy it to user directory in case of permission issues.
-  rsync -r -P "${wham_noise}" "${cdir}/data/wham_noise"
+  rsync -r -P "${wham_noise}" "${cdir}/data"
 fi
 
 (
@@ -89,23 +91,23 @@ do
 mkdir -p data/dev
 mkdir -p data/test
 mkdir -p data/train
-grep -v mixture_ID data/LibriMix/libri_mix/Libri2Mix/wav${sample_rate}/${min_or_max}/metadata/mixture_dev_mix_both.csv | sort -u | awk -F ',' '{print $1, $2}' > data/dev/wav.scp
-grep -v mixture_ID data/LibriMix/libri_mix/Libri2Mix/wav${sample_rate}/${min_or_max}/metadata/mixture_dev_mix_both.csv | grep -v mixture_ID | sort -u | awk -F ',' '{print $1, $3}' > data/dev/spk1.scp
-grep -v mixture_ID data/LibriMix/libri_mix/Libri2Mix/wav${sample_rate}/${min_or_max}/metadata/mixture_dev_mix_both.csv | grep -v mixture_ID | sort -u | awk -F ',' '{print $1, $4}' > data/dev/spk2.scp
-grep -v mixture_ID data/LibriMix/libri_mix/Libri2Mix/wav${sample_rate}/${min_or_max}/metadata/mixture_dev_mix_both.csv | grep -v mixture_ID | sort -u | awk -F ',' '{print $1, $5}' > data/dev/noise1.scp
-grep -v mixture_ID data/LibriMix/libri_mix/Libri2Mix/wav${sample_rate}/${min_or_max}/metadata/mixture_dev_mix_both.csv | grep -v mixture_ID | sort -u | awk -F ',' '{print $1, $1}' > data/dev/utt2spk
-grep -v mixture_ID data/LibriMix/libri_mix/Libri2Mix/wav${sample_rate}/${min_or_max}/metadata/mixture_dev_mix_both.csv | grep -v mixture_ID | sort -u | awk -F ',' '{print $1, $1}' > data/dev/spk2utt
+grep -v mixture_ID data/LibriMix/libri_mix_single/Libri2Mix/wav${sample_rate}/${min_or_max}/metadata/mixture_dev_mix_both.csv  | awk -F ',' '{print $1, $2}'| sort -u > data/dev/wav.scp
+grep -v mixture_ID data/LibriMix/libri_mix_single/Libri2Mix/wav${sample_rate}/${min_or_max}/metadata/mixture_dev_mix_both.csv  | awk -F ',' '{print $1, $3}' | sort -u > data/dev/spk1.scp
+grep -v mixture_ID data/LibriMix/libri_mix_single/Libri2Mix/wav${sample_rate}/${min_or_max}/metadata/mixture_dev_mix_both.csv  | awk -F ',' '{print $1, $4}' | sort -u > data/dev/spk2.scp
+grep -v mixture_ID data/LibriMix/libri_mix_single/Libri2Mix/wav${sample_rate}/${min_or_max}/metadata/mixture_dev_mix_both.csv  | awk -F ',' '{print $1, $5}' | sort -u > data/dev/noise1.scp
+grep -v mixture_ID data/LibriMix/libri_mix_single/Libri2Mix/wav${sample_rate}/${min_or_max}/metadata/mixture_dev_mix_both.csv  | awk -F ',' '{print $1, $1}' | sort -u > data/dev/utt2spk
+grep -v mixture_ID data/LibriMix/libri_mix_single/Libri2Mix/wav${sample_rate}/${min_or_max}/metadata/mixture_dev_mix_both.csv  | awk -F ',' '{print $1, $1}' | sort -u > data/dev/spk2utt
 
-grep -v mixture_ID data/LibriMix/libri_mix/Libri2Mix/wav${sample_rate}/${min_or_max}/metadata/mixture_test_mix_both.csv | sort -u | awk -F ',' '{print $1, $2}' > data/test/wav.scp
-grep -v mixture_ID data/LibriMix/libri_mix/Libri2Mix/wav${sample_rate}/${min_or_max}/metadata/mixture_test_mix_both.csv | sort -u | awk -F ',' '{print $1, $3}' > data/test/spk1.scp
-grep -v mixture_ID data/LibriMix/libri_mix/Libri2Mix/wav${sample_rate}/${min_or_max}/metadata/mixture_test_mix_both.csv | sort -u | awk -F ',' '{print $1, $4}' > data/test/spk2.scp
-grep -v mixture_ID data/LibriMix/libri_mix/Libri2Mix/wav${sample_rate}/${min_or_max}/metadata/mixture_test_mix_both.csv | sort -u | awk -F ',' '{print $1, $5}' > data/test/noise1.scp
-grep -v mixture_ID data/LibriMix/libri_mix/Libri2Mix/wav${sample_rate}/${min_or_max}/metadata/mixture_test_mix_both.csv | sort -u | awk -F ',' '{print $1, $1}' > data/test/utt2spk
-grep -v mixture_ID data/LibriMix/libri_mix/Libri2Mix/wav${sample_rate}/${min_or_max}/metadata/mixture_test_mix_both.csv | sort -u | awk -F ',' '{print $1, $1}' > data/test/spk2utt
+grep -v mixture_ID data/LibriMix/libri_mix_single/Libri2Mix/wav${sample_rate}/${min_or_max}/metadata/mixture_test_mix_both.csv | awk -F ',' '{print $1, $2}' | sort -u > data/test/wav.scp
+grep -v mixture_ID data/LibriMix/libri_mix_single/Libri2Mix/wav${sample_rate}/${min_or_max}/metadata/mixture_test_mix_both.csv | awk -F ',' '{print $1, $3}' | sort -u > data/test/spk1.scp
+grep -v mixture_ID data/LibriMix/libri_mix_single/Libri2Mix/wav${sample_rate}/${min_or_max}/metadata/mixture_test_mix_both.csv | awk -F ',' '{print $1, $4}' | sort -u > data/test/spk2.scp
+grep -v mixture_ID data/LibriMix/libri_mix_single/Libri2Mix/wav${sample_rate}/${min_or_max}/metadata/mixture_test_mix_both.csv | awk -F ',' '{print $1, $5}' | sort -u > data/test/noise1.scp
+grep -v mixture_ID data/LibriMix/libri_mix_single/Libri2Mix/wav${sample_rate}/${min_or_max}/metadata/mixture_test_mix_both.csv | awk -F ',' '{print $1, $1}' | sort -u > data/test/utt2spk
+grep -v mixture_ID data/LibriMix/libri_mix_single/Libri2Mix/wav${sample_rate}/${min_or_max}/metadata/mixture_test_mix_both.csv | awk -F ',' '{print $1, $1}' | sort -u > data/test/spk2utt
 
-grep -v mixture_ID data/LibriMix/libri_mix/Libri2Mix/wav${sample_rate}/${min_or_max}/metadata/mixture_train-*_mix_both.csv | sort -u | awk -F ',' '{print $1, $2}' > data/train/wav.scp
-grep -v mixture_ID data/LibriMix/libri_mix/Libri2Mix/wav${sample_rate}/${min_or_max}/metadata/mixture_train-*_mix_both.csv | sort -u | awk -F ',' '{print $1, $3}' > data/train/spk1.scp
-grep -v mixture_ID data/LibriMix/libri_mix/Libri2Mix/wav${sample_rate}/${min_or_max}/metadata/mixture_train-*_mix_both.csv | sort -u | awk -F ',' '{print $1, $4}' > data/train/spk2.scp
-grep -v mixture_ID data/LibriMix/libri_mix/Libri2Mix/wav${sample_rate}/${min_or_max}/metadata/mixture_train-*_mix_both.csv | sort -u | awk -F ',' '{print $1, $5}' > data/train/noise1.scp
-grep -v mixture_ID data/LibriMix/libri_mix/Libri2Mix/wav${sample_rate}/${min_or_max}/metadata/mixture_train-*_mix_both.csv | sort -u | awk -F ',' '{print $1, $1}' > data/train/utt2spk
-grep -v mixture_ID data/LibriMix/libri_mix/Libri2Mix/wav${sample_rate}/${min_or_max}/metadata/mixture_train-*_mix_both.csv | sort -u | awk -F ',' '{print $1, $1}' > data/train/spk2utt
+grep -v mixture_ID data/LibriMix/libri_mix_single/Libri2Mix/wav${sample_rate}/${min_or_max}/metadata/mixture_train-*_mix_both.csv | awk -F '[,:]' '{print $2, $3}'  | sort -u > data/train/wav.scp
+grep -v mixture_ID data/LibriMix/libri_mix_single/Libri2Mix/wav${sample_rate}/${min_or_max}/metadata/mixture_train-*_mix_both.csv | awk -F '[,:]' '{print $2, $4}'  | sort -u > data/train/spk1.scp
+grep -v mixture_ID data/LibriMix/libri_mix_single/Libri2Mix/wav${sample_rate}/${min_or_max}/metadata/mixture_train-*_mix_both.csv | awk -F '[,:]' '{print $2, $5}'  | sort -u > data/train/spk2.scp
+grep -v mixture_ID data/LibriMix/libri_mix_single/Libri2Mix/wav${sample_rate}/${min_or_max}/metadata/mixture_train-*_mix_both.csv | awk -F '[,:]' '{print $2, $6}'  | sort -u > data/train/noise1.scp
+grep -v mixture_ID data/LibriMix/libri_mix_single/Libri2Mix/wav${sample_rate}/${min_or_max}/metadata/mixture_train-*_mix_both.csv | awk -F '[,:]' '{print $2, $2}'  | sort -u > data/train/utt2spk
+grep -v mixture_ID data/LibriMix/libri_mix_single/Libri2Mix/wav${sample_rate}/${min_or_max}/metadata/mixture_train-*_mix_both.csv | awk -F '[,:]' '{print $2, $2}'  | sort -u > data/train/spk2utt

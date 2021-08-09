@@ -283,6 +283,10 @@ if ! "${skip_data_prep}"; then
 
 
                 _spk_list=" "
+                if [ ! "${dset}" = "${train_set}" ]; then
+                    # keep the original wav.scp for validation and test set
+                    _spk_list+="wav "
+                fi
                 if $use_noise_ref && [ -n "${_suf}" ]; then
                     # references for denoising ("noise1 noise2 ... niose${noise_type_num} ")
                     _spk_list+=$(for n in $(seq $noise_type_num); do echo -n "noise$n "; done)
@@ -291,7 +295,8 @@ if ! "${skip_data_prep}"; then
                     # references for dereverberation
                     _spk_list+=$(for n in $(seq $dereverb_ref_num); do echo -n "dereverb$n "; done)
                 fi
-                # last one should be spk*.scp to count the utt2num_samples correctly
+
+                # last one should be spk*.scp or wav.scp to count the utt2num_samples correctly
                 for i in $(seq ${spk_num}); do
                     _spk_list+="spk${i} "
                 done
@@ -304,14 +309,13 @@ if ! "${skip_data_prep}"; then
                         --audio-format "${audio_format}" --fs "${fs}" ${_opts} \
                         "${data_feats}${_suf}/${dset}_${corpus_name}/${spk}_tmp.scp" "${data_feats}${_suf}/${dset}_${corpus_name}" \
                         "${data_feats}${_suf}/${dset}_${corpus_name}/logs/${spk}" "${data_feats}${_suf}/${dset}_${corpus_name}/data/${spk}"
-                        # "data_${corpus_name}/${dset}/${spk}.scp" "${data_feats}${_suf}/${dset}_${corpus_name}" \
 
                     rm "${data_feats}${_suf}/${dset}_${corpus_name}/${spk}_tmp.scp"
 
                 done
             done
         done
-        1/0
+
         log "Merge all the .scp from different corpus..."
         for dset in "${train_set}" "${valid_set}" ${test_sets}; do
             if [ "${dset}" = "${train_set}" ] || [ "${dset}" = "${valid_set}" ]; then
@@ -324,8 +328,15 @@ if ! "${skip_data_prep}"; then
             for aim_file in spk1.scp spk2.scp utt2num_samples noise1.scp spk2utt utt2spk; do
                 for corpus_name in ${uni_corpus}; do
                     cat "${data_feats}${_suf}/${dset}_${corpus_name}/${aim_file}" 
-                done | sort > "${data_feats}${_suf}/${dset}/${aim_file}"
+                done | sort -u > "${data_feats}${_suf}/${dset}/${aim_file}"
             done
+
+            if [ ! "${dset}" = "${train_set}" ]; then
+                # keep the original wav.scp for validation and test set
+                for corpus_name in ${uni_corpus}; do
+                    cat "${data_feats}${_suf}/${dset}_${corpus_name}/wav.scp" 
+                done | sort -u > "${data_feats}${_suf}/${dset}/wav.scp"
+            fi
             echo "${feats_type}" > "${data_feats}${_suf}/${dset}/feats_type"
             # utils/validate_data_dir.sh "--no-feats --no-text --no-wav" "${data_feats}${_suf}/${dset}"
         done

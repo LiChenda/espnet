@@ -577,61 +577,52 @@ class DynamicPreprocessor(AbsPreprocessor):
             ):
                 if any (data["noise_ref1"] != 0): # noise given by the corpus
                     noise = data["noise_ref1"]
-                    # noise: (Time, Nmic)
-                    if noise.ndim != 1:
-                        # Only support the single channel case now
-                        noise = noise[:, 0] #(Time, Nmic) -> (Time, )
-
-                    noise_frames = len(noise)
-                    if noise_frames == nsamples:
-                        pass
-                    elif noise_frames < nsamples:
-                        offset = np.random.randint(0, nsamples - noise.frames)
-                        # noise: (Time,)
-                        # Repeat noise
-                        noise = np.pad(
-                            noise,
-                            [(offset, nsamples - noise.frames - offset), (0, 0)],
-                            mode="wrap",
-                        )
-                    else:
-                        offset = np.random.randint(0, noise.frames - nsamples)
-                        # noise: (Time, Nmic)
-                        noise = noise[offset:offset + nsamples]
-                    if len(noise) != nsamples:
-                        raise RuntimeError(f"Something wrong: {uid}, noise_len:{len(noise)}, nsamples:{nsamples}")
-                else:
+                else: # noise sampled from external files
                     noise_path = np.random.choice(self.noises)
-                    noise_db = np.random.uniform(
-                        self.noise_db_low, self.noise_db_high
+                    noise, sf = soundfile.read(
+                        noise_path, dtype=np.float64, always_2d=True
                     )
-                    with soundfile.SoundFile(noise_path) as f:
-                        if f.frames == nsamples:
-                            noise = f.read(dtype=np.float64, always_2d=True)
-                        elif f.frames < nsamples:
-                            offset = np.random.randint(0, nsamples - f.frames)
-                            # noise: (Time, Nmic)
-                            noise = f.read(dtype=np.float64, always_2d=True)
-                            # Repeat noise
-                            noise = np.pad(
-                                noise,
-                                [(offset, nsamples - f.frames - offset), (0, 0)],
-                                mode="wrap",
-                            )
+                    if sf != self.sampling_rate:
+                        if noise.shape[1] == 1:
+                            noise = librosa.resample(noise[:,0], sf, self.sampling_rate)[...,None]
                         else:
-                            offset = np.random.randint(0, f.frames - nsamples)
-                            f.seek(offset)
-                            # noise: (Time, Nmic)
-                            noise = f.read(
-                                nsamples, dtype=np.float64, always_2d=True
-                            )
-                            if len(noise) != nsamples:
-                                raise RuntimeError(f"Something wrong: {noise_path}")
+                            noise = librosa.resample(noise, sf, self.sampling_rate)
 
-                # noise: (Nmic, Time)
-                noise = noise.T
-                if noise.shape[0] > 1:
+                # noise: (Time, Nmic)
+                if noise.ndim != 1:
+                    # Only support the single channel case now
+                    noise = noise[:, 0][...,None] #(Time, Nmic) -> (Time,)
+
+                noise_frames = len(noise)
+                if noise_frames == nsamples:
+                    pass
+                elif noise_frames < nsamples:
+                    offset = np.random.randint(0, nsamples - noise_frames)
+                    # noise: (Time,)
+                    # Repeat noise
+                    noise = np.pad(
+                        noise,
+                        [(offset, nsamples - noise_frames - offset), (0, 0)],
+                        mode="wrap",
+                    )
+                else:
+                    offset = np.random.randint(0, noise_frames - nsamples)
+                    # noise: (Time, Nmic)
+                    noise = noise[offset:offset + nsamples]
+                if len(noise) != nsamples:
+                    raise RuntimeError(f"Something wrong: {uid}, noise_len:{len(noise)}, nsamples:{nsamples}")
+
+                noise_db = np.random.uniform(
+                    self.noise_db_low, self.noise_db_high
+                )
+
+                if noise.ndim != 1:
+                    # noise: (Time, Nmic) --> (Nmic, Time)
+                    noise = noise.T
                     noise = noise[self.ref_channel][None,...] if self.ref_channel != None else noise[0][None,...]
+                else:
+                    # noise: (Time,) --> (1, Time)
+                    noise = noise[None,...]
 
                 noise_power = (noise ** 2).mean()
                 scale = (
@@ -656,13 +647,20 @@ class DynamicPreprocessor(AbsPreprocessor):
                 ma = np.max(np.abs(speech_mixture))
                 data["speech_mix"] = speech_mixture * self.speech_volume_normalize / ma
                 for item in final_scale_items:
-                    data[item] *= self.speech_volume_normalize / ma
-
+                    data[item] *= (self.speech_volume_normalize / ma)
 
             for item in final_scale_items:
                 # (Nmic, Time) --> (Time, Nmic)
                 # logging.info(f"{uid} {item} scale:{data[item].shape}")
                 data[item] = data[item].T.squeeze() # (Time, 1) --> (Time,)
+
+            """
+            soundfile.write(f"{uid}-speech_ref1_end_scale.wav", data["speech_ref1"].T, 8000)
+            soundfile.write(f"{uid}-speech_ref2_end_scale.wav", data["speech_ref2"].T, 8000)
+            soundfile.write(f"{uid}-noise_end_scale.wav", data["noise_ref1"].T, 8000)
+            soundfile.write(f"{uid}-speech_mixture.wav", data["speech_mix"].T, 8000)
+            soundfile.write(f"{uid}-speech_mixture_add.wav", (data["speech_ref1"]+data["speech_ref2"]+data["noise_ref1"]).T, 8000)
+            """
 
         if self.text_name in data and self.tokenizer is not None:
             text = data[self.text_name]

@@ -78,6 +78,10 @@ cat $srcdir/utt2spk | utils/apply_map.pl -f 1 $destdir/utt_map  | \
 
 utils/utt2spk_to_spk2utt.pl <$destdir/utt2spk >$destdir/spk2utt
 
+if [ -f $srcdir/wav.scp ]; then
+  utils/apply_map.pl -f 1 $destdir/utt_map <$srcdir/wav.scp >$destdir/wav_tmp.scp
+fi
+
 if [ -f $srcdir/spk1.scp ]; then
   utils/apply_map.pl -f 1 $destdir/utt_map <$srcdir/spk1.scp >$destdir/spk1_tmp.scp
 fi
