@@ -56,6 +56,7 @@ def aggregate_stats_dirs(
                         sum_stats = dict(**stats)
                     else:
                         for k in stats:
+                            print("stats:", sum_stats[k], stats[k])
                             sum_stats[k] += stats[k]
 
                 np.savez(output_dir / mode / f"{key}_stats.npz", **sum_stats)

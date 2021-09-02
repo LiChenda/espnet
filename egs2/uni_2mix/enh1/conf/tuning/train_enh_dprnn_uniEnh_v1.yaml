@@ -11,7 +11,7 @@ log_interval: 2
 #Dynamic Preprocessor Related
 use_preprocessor: True
 sampling_rate: 8000
-rir_scp: dump/rir_tmp.scp
+rir_scp: dump/rirs.json
 rir_apply_prob: 1.0
 noise_scp: dump/noise_tmp.scp 
 noise_apply_prob: 1.0

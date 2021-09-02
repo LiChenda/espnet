@@ -8,7 +8,7 @@ set -o pipefail
 min_or_max=min # "min" or "max". This is to determine how the mixtures are generated in local/data.sh.
 sample_rate=8k
 
-uni_corpus="wsj0_2mix librimix"
+uni_corpus="wsj0_2mix librimix sms_wsj wham"
 # uni_corpus="wsj0_2mix_mini fake_2mix_mini"
 
 train_set="tr_${min_or_max}_${sample_rate}"
@@ -20,6 +20,7 @@ test_sets="tt_${min_or_max}_${sample_rate} "
     --valid_set "${valid_set}" \
     --test_sets "${test_sets}" \
     --fs "${sample_rate}" \
+    --audio_format "wav" \
     --lang en \
     --ngpu 4 \
     --uni_corpus "${uni_corpus}" \

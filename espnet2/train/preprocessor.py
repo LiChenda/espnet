@@ -8,6 +8,7 @@ from typing import Union
 
 import librosa
 import logging
+import json
 import numpy as np
 import scipy.signal
 import soundfile
@@ -459,13 +460,20 @@ class DynamicPreprocessor(AbsPreprocessor):
 
         if train and rir_scp is not None:
             self.rirs = []
-            with open(rir_scp, "r", encoding="utf-8") as f:
-                for line in f:
-                    sps = line.strip().split(None, 1)
-                    if len(sps) == 1:
-                        self.rirs.append(sps[0])
-                    else:
-                        self.rirs.append(sps[1])
+            if rir_scp.endswith("json"):
+                with open(rir_scp, "r") as f:
+                    rir_dict = json.load(f)
+                    self.rirs = rir_dict
+                print("Loaded RIRs from {}".format(rir_scp), self.rirs.keys())
+                1/0
+            else:
+                with open(rir_scp, "r", encoding="utf-8") as f:
+                    for line in f:
+                        sps = line.strip().split(None, 1)
+                        if len(sps) == 1:
+                            self.rirs.append(sps[0])
+                        else:
+                            self.rirs.append(sps[1])
         else:
             self.rirs = None
 
@@ -572,10 +580,10 @@ class DynamicPreprocessor(AbsPreprocessor):
 
             # 2. Add Noise
             if (
-                any (data["noise_ref1"] != 0)  or
+                (data["noise_ref1"]).any() != 0  or
                 (self.noises is not None and self.noise_apply_prob >= np.random.random())
             ):
-                if any (data["noise_ref1"] != 0): # noise given by the corpus
+                if (data["noise_ref1"].any() != 0): # noise given by the corpus
                     noise = data["noise_ref1"]
                 else: # noise sampled from external files
                     noise_path = np.random.choice(self.noises)

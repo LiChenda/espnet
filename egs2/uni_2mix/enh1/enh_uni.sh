@@ -261,6 +261,7 @@ if ! "${skip_data_prep}"; then
         # i.e. the input file format and rate is same as the output.
         for corpus_name in ${uni_corpus}; do
             log "Format wav.scp: data_${corpus_name}/ -> ${data_feats}"
+            continue
 
             for dset in "${train_set}" "${valid_set}" ${test_sets}; do
                 if [ "${dset}" = "${train_set}" ] || [ "${dset}" = "${valid_set}" ]; then
@@ -301,12 +302,20 @@ if ! "${skip_data_prep}"; then
                     _spk_list+="spk${i} "
                 done
 
+                # last_aim="spk${i}"
+
 
                 for spk in ${_spk_list} ; do
                     # shellcheck disable=SC2086
+                    # if [ "${dset}" = "${last_aim}" ]; then 
+                    #     wirte_utt_num=true
+                    # else
+                    #     wirte_utt_num=false
+                    # fi
+
                     scripts/audio/format_wav_scp.sh --nj "${nj}" --cmd "${train_cmd}" \
                         --out-filename "${spk}.scp" \
-                        --audio-format "${audio_format}" --fs "${fs}" ${_opts} \
+                        --audio-format "wav" --fs "${fs}" ${_opts} \
                         "${data_feats}${_suf}/${dset}_${corpus_name}/${spk}_tmp.scp" "${data_feats}${_suf}/${dset}_${corpus_name}" \
                         "${data_feats}${_suf}/${dset}_${corpus_name}/logs/${spk}" "${data_feats}${_suf}/${dset}_${corpus_name}/data/${spk}"
 
@@ -498,7 +507,7 @@ if ! "${skip_train}"; then
             _opts+="--input_dir ${_logdir}/stats.${i} "
         done
         # shellcheck disable=SC2086
-        ${python} -m espnet2.bin.aggregate_stats_dirs ${_opts} --output_dir "${enh_stats_dir}"
+        # ${python} -m espnet2.bin.aggregate_stats_dirs ${_opts} --output_dir "${enh_stats_dir}"
 
     fi
 
